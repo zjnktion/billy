@@ -1,4 +1,4 @@
-package cn.zjnktion.billy.service;
+package cn.zjnktion.billy.service.server;
 
 import cn.zjnktion.billy.observer.Observer;
 

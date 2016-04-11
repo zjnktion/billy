@@ -2,6 +2,7 @@ package cn.zjnktion.billy.future;
 
 import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.listener.FutureListener;
+import cn.zjnktion.billy.service.server.AbstractNioServer;
 import cn.zjnktion.billy.session.Session;
 
 import java.util.ArrayList;
@@ -156,6 +157,13 @@ public class DefaultFuture implements Future {
                 waitThreads--;
             }
         }
+    }
+
+    private void notifyListeners() {
+        for (FutureListener<?> listener : listeners) {
+            notifyListener(listener);
+        }
+        listeners.clear();
     }
 
     private void notifyListener(FutureListener listener) {
