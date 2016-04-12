@@ -1,8 +1,9 @@
 package cn.zjnktion.billy.service;
 
 import cn.zjnktion.billy.common.TransportMetadata;
+import cn.zjnktion.billy.handler.Handler;
 import cn.zjnktion.billy.listener.ServiceListener;
-import cn.zjnktion.billy.observer.Observer;
+import cn.zjnktion.billy.session.Session;
 import cn.zjnktion.billy.session.SessionConfig;
 
 import java.util.Map;
@@ -12,11 +13,15 @@ import java.util.Map;
  */
 public interface Service {
 
+    long getId();
+
     TransportMetadata getTransportMetadata();
 
-    Map<String, Observer> getObservers();
+    Map<Long, Session> getManagedSessions();
 
     SessionConfig getSessionConfig();
+
+    Handler getHandler();
 
     void addListener(ServiceListener listener);
 

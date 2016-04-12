@@ -2,14 +2,16 @@ package cn.zjnktion.billy.service;
 
 import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.common.IdleType;
+import cn.zjnktion.billy.future.*;
+import cn.zjnktion.billy.future.Future;
+import cn.zjnktion.billy.listener.FutureListener;
 import cn.zjnktion.billy.listener.ServiceListener;
-import cn.zjnktion.billy.observer.Observer;
+import cn.zjnktion.billy.session.Session;
 import cn.zjnktion.billy.session.SessionConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -24,8 +26,8 @@ public abstract class AbstractService implements Service {
 
     public static final int AVAILABLE_PROCESSORS = Runtime.getRuntime().availableProcessors();
 
-    protected final Map<String, Observer> observers = new ConcurrentHashMap<String, Observer>();
-    private final Map<String, Observer> readOnlyObservers = Collections.unmodifiableMap(observers);
+    protected final Map<Long, Session> managedSessions = new ConcurrentHashMap<Long, Session>();
+    private final Map<Long, Session> readOnlymanagedSessions = Collections.unmodifiableMap(managedSessions);
 
     private final List<ServiceListener> listeners = new CopyOnWriteArrayList<ServiceListener>();
     private final ServiceListener serviceActivationListener = new ServiceListener() {
@@ -41,15 +43,15 @@ public abstract class AbstractService implements Service {
             // empty
         }
 
-        public void observerActivated(Observer observer) throws Exception {
+        public void sessionCreated(Session session) throws Exception {
             // empty
         }
 
-        public void observerIdle(Observer observer, IdleType idleType) throws Exception {
+        public void sessionIdle(Session session, IdleType idleType) throws Exception {
             // empty
         }
 
-        public void observerDeactivated(Observer observer) throws Exception {
+        public void sessionClosed(Session session) throws Exception {
             // empty
         }
     };
@@ -89,26 +91,8 @@ public abstract class AbstractService implements Service {
         }
     }
 
-    public final Map<String, Observer> getObservers() {
-        return readOnlyObservers;
-    }
-
-    public final void setObservers(Iterable<? extends Observer> observers) {
-        if (observers == null) {
-            throw new IllegalArgumentException("Can not set null observers.");
-        }
-
-        Map<String, Observer> newObservers = new HashMap<String, Observer>();
-        for (Observer observer : observers) {
-            newObservers.put(observer.getId(), observer);
-        }
-
-        if (newObservers.isEmpty()) {
-            throw new IllegalArgumentException("Can not set a empty observers.");
-        }
-
-        this.observers.clear();
-        this.observers.putAll(newObservers);
+    public final Map<Long, Session> getManagedSessions() {
+        return readOnlymanagedSessions;
     }
 
     public final void addListener(ServiceListener listener) {
@@ -218,28 +202,54 @@ public abstract class AbstractService implements Service {
             }
         }
         finally {
-            closeAllObservers();
+            closeAllSessions();
         }
     }
 
-    /**
-     * 服务端和客户端有不同的实现
-     * @param observer
-     */
-    public abstract void fireObserverActivated(Observer observer);
+    public final void fireSessionCreated(Session session) {
+        if (managedSessions.putIfAbsent(session.getId(), session) != null) {
+            return;
+        }
 
-    /**
-     * 服务端和客户端有不同的实现
-     * @param observer
-     * @param idleType
-     */
-    public abstract void fireObserverIdle(Observer observer, IdleType idleType);
+        for (ServiceListener listener : listeners) {
+            try {
+                listener.sessionCreated(session);
+            }
+            catch (Exception e) {
+                ExceptionSupervisor.getInstance().exceptionCaught(e);
+            }
+        }
+    }
 
-    /**
-     * 服务端和客户端有不同的实现
-     * @param observer
-     */
-    public abstract void fireObserverDeactivated(Observer observer);
+    public final void fireSessionIdle(Session session, IdleType idleType) {
+        if (managedSessions.get(session.getId()) == null) {
+            return;
+        }
+
+        for (ServiceListener listener : listeners) {
+            try {
+                listener.sessionIdle(session, idleType);
+            }
+            catch (Exception e) {
+                ExceptionSupervisor.getInstance().exceptionCaught(e);
+            }
+        }
+    }
+
+    public final void fireSessionClosed(Session session) {
+        if (managedSessions.remove(session.getId()) == null) {
+            return;
+        }
+
+        for (ServiceListener listener : listeners) {
+            try {
+                listener.sessionClosed(session);
+            }
+            catch (Exception e) {
+                ExceptionSupervisor.getInstance().exceptionCaught(e);
+            }
+        }
+    }
 
     /**
      * 统一线程池调用方法，只允许{@link Service}的子类调用
@@ -258,5 +268,38 @@ public abstract class AbstractService implements Service {
     /**
      * 服务端和客户端有不同的实现
      */
-    protected abstract void closeAllObservers();
+    private void closeAllSessions() {
+        Object lock = new Object();
+        LockNotifyingListener listener = new LockNotifyingListener(lock);
+
+        for (Session session : managedSessions.values()) {
+            session.closeImmediately().addListener(listener);
+        }
+
+        try {
+            synchronized (lock) {
+                while (!managedSessions.isEmpty()) {
+                    lock.wait(500L);
+                }
+            }
+        }
+        catch (Exception e) {
+            // do nothing
+        }
+    }
+
+    private static class LockNotifyingListener implements FutureListener<cn.zjnktion.billy.future.Future> {
+
+        private final Object lock;
+
+        public LockNotifyingListener(Object lock) {
+            this.lock = lock;
+        }
+
+        public void operationCompleted(Future future) {
+            synchronized (lock) {
+                lock.notifyAll();
+            }
+        }
+    }
 }
