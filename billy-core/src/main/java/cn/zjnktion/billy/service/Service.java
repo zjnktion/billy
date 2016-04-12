@@ -13,7 +13,7 @@ import java.util.Map;
  */
 public interface Service {
 
-    long getId();
+    int getId();
 
     TransportMetadata getTransportMetadata();
 
@@ -22,6 +22,8 @@ public interface Service {
     SessionConfig getSessionConfig();
 
     Handler getHandler();
+
+    void setHandler(Handler handler);
 
     void addListener(ServiceListener listener);
 

@@ -4,6 +4,7 @@ import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.common.IdleType;
 import cn.zjnktion.billy.future.*;
 import cn.zjnktion.billy.future.Future;
+import cn.zjnktion.billy.handler.Handler;
 import cn.zjnktion.billy.listener.FutureListener;
 import cn.zjnktion.billy.listener.ServiceListener;
 import cn.zjnktion.billy.session.Session;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by zhengjn on 2016/4/11.
@@ -25,6 +27,9 @@ public abstract class AbstractService implements Service {
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractService.class);
 
     public static final int AVAILABLE_PROCESSORS = Runtime.getRuntime().availableProcessors();
+
+    private static final AtomicInteger ID_GENERATOR = new AtomicInteger(0);
+    private final int id;
 
     protected final Map<Long, Session> managedSessions = new ConcurrentHashMap<Long, Session>();
     private final Map<Long, Session> readOnlymanagedSessions = Collections.unmodifiableMap(managedSessions);
@@ -58,6 +63,8 @@ public abstract class AbstractService implements Service {
 
     protected final SessionConfig sessionConfig;
 
+    private Handler handler;
+
     // Threads pool use to deal with I/O and businesses.
     private final Executor executor;
     private volatile boolean createdDefaultExecutor;
@@ -89,6 +96,28 @@ public abstract class AbstractService implements Service {
             this.executor = executor;
             createdDefaultExecutor = false;
         }
+
+        id = ID_GENERATOR.incrementAndGet();
+    }
+
+    public final int getId() {
+        return id;
+    }
+
+    public final SessionConfig getSessionConfig() {
+        return sessionConfig;
+    }
+
+    public final Handler getHandler() {
+        return handler;
+    }
+
+    public final void setHandler(Handler handler) {
+        if (handler == null) {
+            throw new IllegalArgumentException("Can not set a null handler.");
+        }
+
+        this.handler = handler;
     }
 
     public final Map<Long, Session> getManagedSessions() {
