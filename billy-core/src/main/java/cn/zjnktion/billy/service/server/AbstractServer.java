@@ -154,4 +154,36 @@ public abstract class AbstractServer extends AbstractService implements Server {
     protected abstract Set<SocketAddress> bind0(List<? extends SocketAddress> socketAddresses) throws Exception;
 
     protected abstract void unbind0(List<? extends SocketAddress> socketAddresses) throws Exception;
+
+    protected static class ServerOperationFuture extends ServiceOperationFuture {
+        private final List<SocketAddress> bindAddresses;
+
+        public ServerOperationFuture(List<? extends SocketAddress> bindAddresses) {
+            this.bindAddresses = new ArrayList<SocketAddress>(bindAddresses);
+        }
+
+        public final List<SocketAddress> getBindAddresses() {
+            return Collections.unmodifiableList(bindAddresses);
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+
+            sb.append("Server bind operation : ");
+
+            boolean isFirst = true;
+            for (SocketAddress bindAddress : bindAddresses) {
+                if (isFirst) {
+                    isFirst = false;
+                }
+                else {
+                    sb.append(", ");
+                }
+                sb.append(bindAddress);
+            }
+
+            return sb.toString();
+        }
+    }
 }

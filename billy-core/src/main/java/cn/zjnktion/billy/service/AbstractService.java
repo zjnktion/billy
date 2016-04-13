@@ -2,7 +2,7 @@ package cn.zjnktion.billy.service;
 
 import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.common.IdleType;
-import cn.zjnktion.billy.future.*;
+import cn.zjnktion.billy.future.DefaultFuture;
 import cn.zjnktion.billy.future.Future;
 import cn.zjnktion.billy.handler.Handler;
 import cn.zjnktion.billy.listener.FutureListener;
@@ -25,8 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public abstract class AbstractService implements Service {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractService.class);
-
-    public static final int AVAILABLE_PROCESSORS = Runtime.getRuntime().availableProcessors();
 
     private static final AtomicInteger ID_GENERATOR = new AtomicInteger(0);
     private final int id;
@@ -65,7 +63,7 @@ public abstract class AbstractService implements Service {
 
     private Handler handler;
 
-    // Threads pool use to deal with I/O and businesses.
+    // Threads pool use to deal with Accept ,Connect or Un-accept ,Un-connect.
     private final Executor executor;
     private volatile boolean createdDefaultExecutor;
 
@@ -89,7 +87,7 @@ public abstract class AbstractService implements Service {
         this.sessionConfig = sessionConfig;
 
         if (executor == null) {
-            this.executor = new ThreadPoolExecutor(AVAILABLE_PROCESSORS + 1, AVAILABLE_PROCESSORS * 4, 60L, TimeUnit.SECONDS, new LinkedBlockingDeque<Runnable>());
+            this.executor = Executors.newCachedThreadPool();
             createdDefaultExecutor = true;
         }
         else {
@@ -314,6 +312,38 @@ public abstract class AbstractService implements Service {
         }
         catch (Exception e) {
             // do nothing
+        }
+    }
+
+    protected static class ServiceOperationFuture extends DefaultFuture {
+
+        public ServiceOperationFuture() {
+            super(null);
+        }
+
+        @Override
+        public final boolean isCompleted() {
+            return getResult() == Boolean.TRUE;
+        }
+
+        public final void setCompleted() {
+            setResult(Boolean.TRUE);
+        }
+
+        public final Exception getCause() {
+            if (getResult() instanceof Exception) {
+                return (Exception) getResult();
+            }
+
+            return null;
+        }
+
+        public final void setCause(Exception cause) {
+            if (cause == null) {
+                throw new IllegalArgumentException("Can not set a null cause.");
+            }
+
+            setResult(cause);
         }
     }
 

@@ -20,9 +20,9 @@ public class DefaultFuture implements Future {
 
     private List<FutureListener<?>> listeners = new ArrayList<FutureListener<?>>();
 
-    private Object result;
-
     private boolean completed;
+
+    private Object result;
 
     private final Object lock;
 
@@ -41,6 +41,31 @@ public class DefaultFuture implements Future {
         synchronized (lock) {
             return completed;
         }
+    }
+
+    public Object getResult() {
+        synchronized (lock) {
+            return result;
+        }
+    }
+
+    public boolean setResult(Object result) {
+        synchronized (lock) {
+            if (completed) {
+                return false;
+            }
+
+            this.result = result;
+            completed=true;
+
+            if (waitThreads > 0) {
+                lock.notifyAll();
+            }
+        }
+
+        notifyListeners();
+
+        return true;
     }
 
     public Future await() throws InterruptedException {
