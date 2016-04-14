@@ -2,7 +2,6 @@ package cn.zjnktion.billy.service;
 
 import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.common.IdleType;
-import cn.zjnktion.billy.future.DefaultFuture;
 import cn.zjnktion.billy.future.Future;
 import cn.zjnktion.billy.handler.Handler;
 import cn.zjnktion.billy.listener.FutureListener;
@@ -312,38 +311,6 @@ public abstract class AbstractService implements Service {
         }
         catch (Exception e) {
             // do nothing
-        }
-    }
-
-    protected static class ServiceOperationFuture extends DefaultFuture {
-
-        public ServiceOperationFuture() {
-            super(null);
-        }
-
-        @Override
-        public final boolean isCompleted() {
-            return getResult() == Boolean.TRUE;
-        }
-
-        public final void setCompleted() {
-            setResult(Boolean.TRUE);
-        }
-
-        public final Exception getCause() {
-            if (getResult() instanceof Exception) {
-                return (Exception) getResult();
-            }
-
-            return null;
-        }
-
-        public final void setCause(Exception cause) {
-            if (cause == null) {
-                throw new IllegalArgumentException("Can not set a null cause.");
-            }
-
-            setResult(cause);
         }
     }
 

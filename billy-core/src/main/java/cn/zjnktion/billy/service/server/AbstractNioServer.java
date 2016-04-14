@@ -2,6 +2,8 @@ package cn.zjnktion.billy.service.server;
 
 import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.common.RuntimeIOException;
+import cn.zjnktion.billy.future.BindFuture;
+import cn.zjnktion.billy.future.DefaultBindFuture;
 import cn.zjnktion.billy.processor.Processor;
 import cn.zjnktion.billy.session.AbstractNioSession;
 import cn.zjnktion.billy.session.SessionConfig;
@@ -11,8 +13,8 @@ import java.nio.channels.Channel;
 import java.nio.channels.Selector;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by zhengjn on 2016/4/11.
@@ -26,13 +28,7 @@ public abstract class AbstractNioServer<S extends AbstractNioSession, C extends 
 
     protected volatile boolean selectable;
 
-    protected final Queue<ServerOperationFuture> registerQueue = new ConcurrentLinkedQueue<ServerOperationFuture>();
-    protected final Queue<ServerOperationFuture> unregisterQueue = new ConcurrentLinkedQueue<ServerOperationFuture>();
-    protected final Semaphore semaphore = new Semaphore(1);
-
     protected final Map<SocketAddress, C> boundChannels = Collections.synchronizedMap(new HashMap<SocketAddress, C>());
-
-    private AtomicReference<Register> registerRef = new AtomicReference<Register>();
 
     protected AbstractNioServer(SessionConfig sessionConfig, Executor executor, Processor<S> processor) {
         this(sessionConfig, executor, processor, null);
@@ -74,51 +70,26 @@ public abstract class AbstractNioServer<S extends AbstractNioSession, C extends 
         }
     }
 
-    protected final Set<SocketAddress> bind0(List<? extends SocketAddress> bindAddresses) throws Exception {
-        ServerOperationFuture future = new ServerOperationFuture(bindAddresses);
-        registerQueue.add(future);
+    protected final BindFuture bind0(List<? extends SocketAddress> bindAddresses) throws Exception {
+        DefaultBindFuture future = new DefaultBindFuture(bindAddresses);
 
-        work();
+        bindChannels(future);
 
-        try {
-            semaphore.acquire();
-
-            TimeUnit.MILLISECONDS.sleep(10);
-
-            wakeupSelector();
-        }
-        finally {
-            semaphore.release();
-        }
-
-        future.awaitUninterruptibly();
-        if (future.getCause() != null) {
-            throw future.getCause();
-        }
-
-        Set<SocketAddress> boundAddresses = new HashSet<SocketAddress>();
-        for (C channel : boundChannels.values()) {
-            boundAddresses.add(localAddress(channel));
-        }
-
-        return boundAddresses;
-    }
-
-    protected final void unbind0(List<? extends SocketAddress> unbindAddresses) throws Exception {
-        ServerOperationFuture future = new ServerOperationFuture(unbindAddresses);
-        unregisterQueue.add(future);
-
-        registerChannels();
-
-        // wait a second so that the worker can select some.
         TimeUnit.MILLISECONDS.sleep(10);
 
-        wakeupSelector();
+        return future;
+    }
 
-        future.awaitUninterruptibly();
-        if (future.getCause() != null) {
-            throw future.getCause();
-        }
+    protected final BindFuture unbind0(List<? extends SocketAddress> unbindAddresses) throws Exception {
+        DefaultBindFuture future = new DefaultBindFuture(unbindAddresses);
+        unbindQueue.add(future);
+
+        unbindChannels();
+
+        // wait a second so that the binder can start.
+        TimeUnit.MILLISECONDS.sleep(10);
+
+        return future;
     }
 
     protected final void dispose0() throws Exception {
@@ -131,23 +102,15 @@ public abstract class AbstractNioServer<S extends AbstractNioSession, C extends 
         selector.wakeup();
     }
 
-    private void registerChannels() throws InterruptedException{
-        // start the register class
-        Register register = registerRef.get();
+    private void bindChannels(BindFuture future) throws InterruptedException{
+        // start the binder class
+        Binder binder = new Binder(future);
 
-        if (register == null) {
-            try {
-                semaphore.acquire();
+        executeWorker(binder);
+    }
 
-                register = new Register();
-                if (registerRef.compareAndSet(null, register)) {
-                    executeWorker(register);
-                }
-            }
-            finally {
-                semaphore.release();
-            }
-        }
+    private void unbindChannels() throws InterruptedException {
+
     }
 
     /**
@@ -180,49 +143,64 @@ public abstract class AbstractNioServer<S extends AbstractNioSession, C extends 
     protected abstract SocketAddress localAddress(C channel) throws Exception;
 
     /**
-     * when call registerChannels method this class will be initialized.
+     * when call bindChannels method this class will be initialized.
      */
-    private class Register implements Runnable {
+    private class Binder implements Runnable {
+
+        private final BindFuture future;
+
+        public Binder(BindFuture future) {
+            this.future = future;
+        }
 
         public void run() {
-            for (;;) {
-                ServerOperationFuture future = registerQueue.poll();
+            Map<SocketAddress, C> bindChannels = new HashMap<SocketAddress, C>();
+            List<SocketAddress> bindAddresses = future.getBindAddresses();
 
-                if (future == null) {
-                    return;
+            try {
+                for (SocketAddress bindAddress : bindAddresses) {
+                    C channel = open(bindAddress);
+                    bindChannels.put(localAddress(channel), channel);
                 }
 
-                Map<SocketAddress, C> bindChannels = new ConcurrentHashMap<SocketAddress, C>();
-                List<SocketAddress> bindAddresses = future.getBindAddresses();
+                boundChannels.putAll(bindChannels);
 
-                try {
-                    for (SocketAddress bindAddress : bindAddresses) {
-                        C channel = open(bindAddress);
-                        bindChannels.put(localAddress(channel), channel);
-                    }
-
-                    boundChannels.putAll(bindChannels);
-
-                    future.setCompleted();
+                Set<SocketAddress> boundAddresses = new HashSet<SocketAddress>();
+                for (C channel : boundChannels.values()) {
+                    AbstractNioServer.this.boundAddresses.add(localAddress(channel));
                 }
-                catch (Exception e) {
-                    future.setCause(e);
-                }
-                finally {
-                    if (future.getCause() != null) {
-                        for (C channel : bindChannels.values()) {
-                            try {
-                                close(channel);
-                            }
-                            catch (Exception e) {
-                                ExceptionSupervisor.getInstance().exceptionCaught(e);
-                            }
+
+                future.setBound();
+            }
+            catch (Exception e) {
+                future.setCause(e);
+            }
+            finally {
+                if (future.getCause() != null) {
+                    for (C channel : bindChannels.values()) {
+                        try {
+                            close(channel);
+                        }
+                        catch (Exception e) {
+                            ExceptionSupervisor.getInstance().exceptionCaught(e);
                         }
                     }
-
-                    wakeupSelector();
                 }
+
+                wakeupSelector();
             }
+        }
+    }
+
+    private class Unbinder implements Runnable {
+
+        public void run() {
+            BindFuture future = null;
+            while ((future = unbindQueue.poll()) != null) {
+
+            }
+
+
         }
     }
 }

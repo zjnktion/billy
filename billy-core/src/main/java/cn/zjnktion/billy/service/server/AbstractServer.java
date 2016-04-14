@@ -1,6 +1,7 @@
 package cn.zjnktion.billy.service.server;
 
 import cn.zjnktion.billy.common.RuntimeIOException;
+import cn.zjnktion.billy.future.BindFuture;
 import cn.zjnktion.billy.service.AbstractService;
 import cn.zjnktion.billy.session.SessionConfig;
 
@@ -27,7 +28,7 @@ public abstract class AbstractServer extends AbstractService implements Server {
         return readOnlyBoundAddresses;
     }
 
-    public final void bind(SocketAddress socketAddress) throws IOException {
+    public final BindFuture bind(SocketAddress socketAddress) throws IOException {
         if (socketAddress == null) {
             throw new IllegalArgumentException("Can not bind a null socket address.");
         }
@@ -35,10 +36,10 @@ public abstract class AbstractServer extends AbstractService implements Server {
         List<SocketAddress> bindAddresses = new ArrayList<SocketAddress>();
         bindAddresses.add(socketAddress);
 
-        bind(bindAddresses);
+        return bind(bindAddresses);
     }
 
-    public final void bind(Iterable<? extends SocketAddress> socketAddresses) throws IOException {
+    public final BindFuture bind(Iterable<? extends SocketAddress> socketAddresses) throws IOException {
         if (isDisposing()) {
             throw new IllegalStateException("Service had been disposed.");
         }
@@ -69,15 +70,17 @@ public abstract class AbstractServer extends AbstractService implements Server {
             }
 
             try {
-                Set<SocketAddress> addresses = bind0(bindAddresses);
+                BindFuture future = bind0(bindAddresses);
 
                 synchronized (boundAddresses) {
-                    boundAddresses.addAll(addresses);
+                    boundAddresses.addAll(future.getBindAddresses());
                 }
 
                 if (activated) {
                     fireServiceActivated();
                 }
+
+                return future;
             }
             catch (IOException e) {
                 throw e;
@@ -91,7 +94,7 @@ public abstract class AbstractServer extends AbstractService implements Server {
         }
     }
 
-    public final void unbind(SocketAddress socketAddress) throws IOException {
+    public final BindFuture unbind(SocketAddress socketAddress) throws IOException {
         if (socketAddress == null) {
             throw new IllegalArgumentException("Can not unbind a null socket address.");
         }
@@ -99,10 +102,10 @@ public abstract class AbstractServer extends AbstractService implements Server {
         List<SocketAddress> bindAddesses = new ArrayList<SocketAddress>();
         bindAddesses.add(socketAddress);
 
-        unbind(bindAddesses);
+        return unbind(bindAddesses);
     }
 
-    public final void unbind(Iterable<? extends SocketAddress> socketAddresses) throws IOException {
+    public final BindFuture unbind(Iterable<? extends SocketAddress> socketAddresses) throws IOException {
         if (isDisposing()) {
             throw new IllegalStateException("Service had been disposed.");
         }
@@ -114,7 +117,7 @@ public abstract class AbstractServer extends AbstractService implements Server {
         synchronized (bindLock) {
             synchronized (boundAddresses) {
                 if (boundAddresses.isEmpty()) {
-                    return;
+                    throw new IllegalStateException("No bound socket addresses.");
                 }
 
                 List<SocketAddress> unbindAddresses = new ArrayList<SocketAddress>();
@@ -130,13 +133,15 @@ public abstract class AbstractServer extends AbstractService implements Server {
                 }
 
                 try {
-                    unbind0(unbindAddresses);
+                    BindFuture future = unbind0(unbindAddresses);
 
                     boundAddresses.removeAll(unbindAddresses);
 
                     if (boundAddresses.isEmpty()) {
                         fireServiceDeactivated();
                     }
+
+                    return future;
                 }
                 catch (IOException e) {
                     throw e;
@@ -151,39 +156,7 @@ public abstract class AbstractServer extends AbstractService implements Server {
         }
     }
 
-    protected abstract Set<SocketAddress> bind0(List<? extends SocketAddress> socketAddresses) throws Exception;
+    protected abstract BindFuture bind0(List<? extends SocketAddress> socketAddresses) throws Exception;
 
-    protected abstract void unbind0(List<? extends SocketAddress> socketAddresses) throws Exception;
-
-    protected static class ServerOperationFuture extends ServiceOperationFuture {
-        private final List<SocketAddress> bindAddresses;
-
-        public ServerOperationFuture(List<? extends SocketAddress> bindAddresses) {
-            this.bindAddresses = new ArrayList<SocketAddress>(bindAddresses);
-        }
-
-        public final List<SocketAddress> getBindAddresses() {
-            return Collections.unmodifiableList(bindAddresses);
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-
-            sb.append("Server bind operation : ");
-
-            boolean isFirst = true;
-            for (SocketAddress bindAddress : bindAddresses) {
-                if (isFirst) {
-                    isFirst = false;
-                }
-                else {
-                    sb.append(", ");
-                }
-                sb.append(bindAddress);
-            }
-
-            return sb.toString();
-        }
-    }
+    protected abstract BindFuture unbind0(List<? extends SocketAddress> socketAddresses) throws Exception;
 }
