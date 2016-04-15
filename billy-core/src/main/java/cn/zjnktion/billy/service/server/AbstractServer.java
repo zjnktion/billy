@@ -2,6 +2,7 @@ package cn.zjnktion.billy.service.server;
 
 import cn.zjnktion.billy.common.RuntimeIOException;
 import cn.zjnktion.billy.future.BindFuture;
+import cn.zjnktion.billy.future.UnbindFuture;
 import cn.zjnktion.billy.service.AbstractService;
 import cn.zjnktion.billy.session.SessionConfig;
 
@@ -94,7 +95,7 @@ public abstract class AbstractServer extends AbstractService implements Server {
         }
     }
 
-    public final BindFuture unbind(SocketAddress socketAddress) throws IOException {
+    public final UnbindFuture unbind(SocketAddress socketAddress) throws IOException {
         if (socketAddress == null) {
             throw new IllegalArgumentException("Can not unbind a null socket address.");
         }
@@ -105,7 +106,7 @@ public abstract class AbstractServer extends AbstractService implements Server {
         return unbind(bindAddesses);
     }
 
-    public final BindFuture unbind(Iterable<? extends SocketAddress> socketAddresses) throws IOException {
+    public final UnbindFuture unbind(Iterable<? extends SocketAddress> socketAddresses) throws IOException {
         if (isDisposing()) {
             throw new IllegalStateException("Service had been disposed.");
         }
@@ -133,7 +134,7 @@ public abstract class AbstractServer extends AbstractService implements Server {
                 }
 
                 try {
-                    BindFuture future = unbind0(unbindAddresses);
+                    UnbindFuture future = unbind0(unbindAddresses);
 
                     boundAddresses.removeAll(unbindAddresses);
 
@@ -158,5 +159,5 @@ public abstract class AbstractServer extends AbstractService implements Server {
 
     protected abstract BindFuture bind0(List<? extends SocketAddress> socketAddresses) throws Exception;
 
-    protected abstract BindFuture unbind0(List<? extends SocketAddress> socketAddresses) throws Exception;
+    protected abstract UnbindFuture unbind0(List<? extends SocketAddress> socketAddresses) throws Exception;
 }

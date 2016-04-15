@@ -4,22 +4,25 @@ import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.common.RuntimeIOException;
 import cn.zjnktion.billy.future.BindFuture;
 import cn.zjnktion.billy.future.DefaultBindFuture;
+import cn.zjnktion.billy.future.DefaultUnbindFuture;
+import cn.zjnktion.billy.future.UnbindFuture;
 import cn.zjnktion.billy.processor.Processor;
 import cn.zjnktion.billy.session.AbstractNioSession;
 import cn.zjnktion.billy.session.SessionConfig;
 
 import java.net.SocketAddress;
-import java.nio.channels.Channel;
 import java.nio.channels.Selector;
 import java.nio.channels.spi.SelectorProvider;
-import java.util.*;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Created by zhengjn on 2016/4/11.
  */
-public abstract class AbstractNioServer<S extends AbstractNioSession, C extends Channel> extends AbstractServer {
+public abstract class AbstractNioServer<S extends AbstractNioSession> extends AbstractServer {
 
     protected final Processor<S> processor;
 
@@ -28,7 +31,8 @@ public abstract class AbstractNioServer<S extends AbstractNioSession, C extends 
 
     protected volatile boolean selectable;
 
-    protected final Map<SocketAddress, C> boundChannels = Collections.synchronizedMap(new HashMap<SocketAddress, C>());
+    protected final Queue<BindFuture> bindQueue = new ConcurrentLinkedQueue<BindFuture>();
+    protected final Queue<UnbindFuture> unbindQueue = new ConcurrentLinkedQueue<UnbindFuture>();
 
     protected AbstractNioServer(SessionConfig sessionConfig, Executor executor, Processor<S> processor) {
         this(sessionConfig, executor, processor, null);
@@ -72,29 +76,35 @@ public abstract class AbstractNioServer<S extends AbstractNioSession, C extends 
 
     protected final BindFuture bind0(List<? extends SocketAddress> bindAddresses) throws Exception {
         DefaultBindFuture future = new DefaultBindFuture(bindAddresses);
+        bindQueue.add(future);
 
-        bindChannels(future);
+        poll();
 
+        // wait a second so that the polling can start to select.
         TimeUnit.MILLISECONDS.sleep(10);
+
+        wakeupSelector();
 
         return future;
     }
 
-    protected final BindFuture unbind0(List<? extends SocketAddress> unbindAddresses) throws Exception {
-        DefaultBindFuture future = new DefaultBindFuture(unbindAddresses);
+    protected final UnbindFuture unbind0(List<? extends SocketAddress> unbindAddresses) throws Exception {
+        DefaultUnbindFuture future = new DefaultUnbindFuture(unbindAddresses);
         unbindQueue.add(future);
 
-        unbindChannels();
+        poll();
 
-        // wait a second so that the binder can start.
+        // wait a second so that the polling can start to select.
         TimeUnit.MILLISECONDS.sleep(10);
+
+        wakeupSelector();
 
         return future;
     }
 
     protected final void dispose0() throws Exception {
         unbind(boundAddresses);
-        unwork();
+        poll();
         wakeupSelector();
     }
 
@@ -102,105 +112,9 @@ public abstract class AbstractNioServer<S extends AbstractNioSession, C extends 
         selector.wakeup();
     }
 
-    private void bindChannels(BindFuture future) throws InterruptedException{
-        // start the binder class
-        Binder binder = new Binder(future);
-
-        executeWorker(binder);
-    }
-
-    private void unbindChannels() throws InterruptedException {
-
-    }
-
     /**
      * 面向连接和无连接有不同的实现
      * @throws InterruptedException
      */
-    protected abstract void work() throws InterruptedException;
-
-    /**
-     * 面向连接和无连接有不同的实现
-     * @throws InterruptedException
-     */
-    protected abstract void unwork() throws InterruptedException;
-
-    /**
-     * 面向连接和无连接有不同的实现
-     * @param socketAddress
-     * @return
-     * @throws Exception
-     */
-    protected abstract C open(SocketAddress socketAddress) throws Exception;
-
-    /**
-     * 面向连接和无连接有不同的实现
-     * @param channel
-     * @throws Exception
-     */
-    protected abstract void close(C channel) throws Exception;
-
-    protected abstract SocketAddress localAddress(C channel) throws Exception;
-
-    /**
-     * when call bindChannels method this class will be initialized.
-     */
-    private class Binder implements Runnable {
-
-        private final BindFuture future;
-
-        public Binder(BindFuture future) {
-            this.future = future;
-        }
-
-        public void run() {
-            Map<SocketAddress, C> bindChannels = new HashMap<SocketAddress, C>();
-            List<SocketAddress> bindAddresses = future.getBindAddresses();
-
-            try {
-                for (SocketAddress bindAddress : bindAddresses) {
-                    C channel = open(bindAddress);
-                    bindChannels.put(localAddress(channel), channel);
-                }
-
-                boundChannels.putAll(bindChannels);
-
-                Set<SocketAddress> boundAddresses = new HashSet<SocketAddress>();
-                for (C channel : boundChannels.values()) {
-                    AbstractNioServer.this.boundAddresses.add(localAddress(channel));
-                }
-
-                future.setBound();
-            }
-            catch (Exception e) {
-                future.setCause(e);
-            }
-            finally {
-                if (future.getCause() != null) {
-                    for (C channel : bindChannels.values()) {
-                        try {
-                            close(channel);
-                        }
-                        catch (Exception e) {
-                            ExceptionSupervisor.getInstance().exceptionCaught(e);
-                        }
-                    }
-                }
-
-                wakeupSelector();
-            }
-        }
-    }
-
-    private class Unbinder implements Runnable {
-
-        public void run() {
-            BindFuture future = null;
-            while ((future = unbindQueue.poll()) != null) {
-
-            }
-
-
-        }
-    }
+    protected abstract void poll() throws InterruptedException;
 }

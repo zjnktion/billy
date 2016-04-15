@@ -1,6 +1,7 @@
 package cn.zjnktion.billy.service.server;
 
 import cn.zjnktion.billy.future.BindFuture;
+import cn.zjnktion.billy.future.UnbindFuture;
 import cn.zjnktion.billy.service.Service;
 
 import java.io.IOException;
@@ -18,7 +19,7 @@ public interface Server extends Service {
 
     BindFuture bind(Iterable<? extends SocketAddress> socketAddresses) throws IOException;
 
-    BindFuture unbind(SocketAddress socketAddress) throws IOException;
+    UnbindFuture unbind(SocketAddress socketAddress) throws IOException;
 
-    BindFuture unbind(Iterable<? extends SocketAddress> socketAddresses) throws IOException;
+    UnbindFuture unbind(Iterable<? extends SocketAddress> socketAddresses) throws IOException;
 }

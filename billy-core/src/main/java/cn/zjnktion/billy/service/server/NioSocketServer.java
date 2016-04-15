@@ -1,19 +1,32 @@
 package cn.zjnktion.billy.service.server;
 
+import cn.zjnktion.billy.common.ExceptionSupervisor;
 import cn.zjnktion.billy.common.TransportMetadata;
+import cn.zjnktion.billy.future.BindFuture;
+import cn.zjnktion.billy.future.UnbindFuture;
 import cn.zjnktion.billy.processor.NioSocketProcessor;
 import cn.zjnktion.billy.processor.Processor;
 import cn.zjnktion.billy.session.NioSocketSession;
 import cn.zjnktion.billy.session.NioSocketSessionConfig;
 
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.net.SocketAddress;
+import java.nio.channels.ClosedSelectorException;
+import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Created by zhengjn on 2016/4/5.
  */
-public final class NioSocketServer extends AbstractNioServer<NioSocketSession, ServerSocketChannel> implements SocketServer {
+public final class NioSocketServer extends AbstractNioServer<NioSocketSession> implements SocketServer {
 
     private boolean keepAlive = false;
 
@@ -26,6 +39,11 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession, S
     private int sendBufferSize = 1024;
 
     private int receiveBufferSize = 1024;
+
+    private final AtomicReference<Polling> pollingRef = new AtomicReference<Polling>();
+    private final Semaphore pollLock = new Semaphore(1);
+
+    private final Map<SocketAddress, ServerSocketChannel> boundChannels = Collections.synchronizedMap(new HashMap<SocketAddress, ServerSocketChannel>());
 
     public NioSocketServer() {
         this(null, new NioSocketProcessor());
@@ -44,13 +62,20 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession, S
     }
 
     @Override
-    protected void work() throws InterruptedException {
+    protected void poll() throws InterruptedException {
+        Polling polling = pollingRef.get();
 
-    }
+        if (polling == null) {
+            pollLock.acquire();
+            polling = new Polling();
 
-    @Override
-    protected SocketAddress localAddress(ServerSocketChannel channel) throws Exception {
-        return channel.socket().getLocalSocketAddress();
+            if (pollingRef.compareAndSet(null, polling)) {
+                executeWorker(polling);
+            }
+            else {
+                pollLock.release();
+            }
+        }
     }
 
     public boolean isKeepAlive() {
@@ -102,6 +127,266 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession, S
     }
 
     public TransportMetadata getTransportMetadata() {
-        return null;
+        return new TransportMetadata() {
+            public String getProvider() {
+                return null;
+            }
+
+            public String getType() {
+                return null;
+            }
+
+            public boolean isConnectionless() {
+                return false;
+            }
+
+            public boolean canFragment() {
+                return false;
+            }
+        };
+    }
+
+    private class Polling implements Runnable {
+
+        public void run() {
+            assert (pollingRef.get() == this);
+
+            int boundChannelCount = 0;
+
+            pollLock.release();
+
+            while (selectable) {
+                try {
+                    int selected = selector.select();
+
+                    boundChannelCount += bindChannels();
+                    if (boundChannelCount == 0) {
+                        pollingRef.set(null);
+
+                        if (bindQueue.isEmpty() && unbindQueue.isEmpty()) {
+                            assert (pollingRef.get() != this);
+                            break;
+                        }
+
+                        if (!pollingRef.compareAndSet(null, this)) {
+                            assert (pollingRef.get() != this);
+                            break;
+                        }
+
+                        assert (pollingRef.get() == this);
+                    }
+
+                    if (selected > 0) {
+                        accept(selector.selectedKeys().iterator());
+                    }
+
+                    boundChannelCount -= unbindChannels();
+                }
+                catch (ClosedSelectorException e) {
+                    ExceptionSupervisor.getInstance().exceptionCaught(e);
+                    // if the selector had been closed ,it means that no need to poll any more.
+                    break;
+                }
+                catch (Exception e) {
+                    ExceptionSupervisor.getInstance().exceptionCaught(e);
+
+                    // if some unexpected exceptions occur, we should poll after 500ms.
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(500L);
+                    } catch (InterruptedException e1) {
+                        ExceptionSupervisor.getInstance().exceptionCaught(e1);
+                    }
+                }
+            }
+
+            // if disposing ,release all resources.
+            if (selectable && isDisposing()) {
+                selectable = false;
+
+                processor.dispose();
+
+                try {
+                    if (selector != null) {
+                        selector.close();
+                    }
+                }
+                catch (Exception e) {
+                    ExceptionSupervisor.getInstance().exceptionCaught(e);
+                }
+            }
+        }
+    }
+
+    private int select() throws Exception {
+        return selector.select();
+    }
+
+    private int bindChannels() {
+        for(;;) {
+            BindFuture future = bindQueue.poll();
+
+            if (future == null) {
+                return 0;
+            }
+
+            Set<SocketAddress> newAddresses = new HashSet<SocketAddress>();
+            Map<SocketAddress, ServerSocketChannel> newChannels = new ConcurrentHashMap<SocketAddress, ServerSocketChannel>();
+            List<SocketAddress> bindAddresses = future.getBindAddresses();
+
+            try {
+                for (SocketAddress socketAddress : bindAddresses) {
+                    ServerSocketChannel channel = open(socketAddress);
+                    newAddresses.add(channel.socket().getLocalSocketAddress());
+                    newChannels.put(channel.socket().getLocalSocketAddress(), channel);
+                }
+
+                boundAddresses.addAll(newAddresses);
+                boundChannels.putAll(newChannels);
+
+                future.setBound(newAddresses);
+
+                return newChannels.size();
+            }
+            catch (Exception e) {
+                future.setCause(e);
+            }
+            finally {
+                if (future.getCause() != null) {
+                    for (ServerSocketChannel channel : newChannels.values()) {
+                        try {
+                            SelectionKey key = channel.keyFor(selector);
+                            if (key != null) {
+                                key.cancel();
+                            }
+
+                            channel.close();
+                        }
+                        catch (IOException e) {
+                            ExceptionSupervisor.getInstance().exceptionCaught(e);
+                        }
+                    }
+
+                    wakeupSelector();
+                }
+            }
+        }
+    }
+
+    private int unbindChannels() {
+        for (;;) {
+            UnbindFuture future = unbindQueue.poll();
+            if (future == null) {
+                return 0;
+            }
+
+            Set<SocketAddress> removeAddresses = new HashSet<SocketAddress>();
+            Map<SocketAddress, ServerSocketChannel> removeChannels = new ConcurrentHashMap<SocketAddress, ServerSocketChannel>();
+            List<SocketAddress> unbindAddresses = future.getUnbindAddresses();
+
+            try {
+                for (SocketAddress socketAddress : unbindAddresses) {
+                    ServerSocketChannel channel = boundChannels.remove(socketAddress);
+
+                    if (channel == null) {
+                        continue;
+                    }
+
+                    removeAddresses.add(socketAddress);
+                    removeChannels.put(channel.socket().getLocalSocketAddress(), channel);
+
+                    try {
+                        SelectionKey key = channel.keyFor(selector);
+                        if (key != null) {
+                            key.cancel();
+                        }
+
+                        channel.close();
+                    } catch (IOException e) {
+                        ExceptionSupervisor.getInstance().exceptionCaught(e);
+                    }
+                }
+
+                boundAddresses.removeAll(removeAddresses);
+
+                future.setUnbound(removeAddresses);
+
+                return removeChannels.size();
+            }
+            finally {
+                if (removeChannels.size() != 0) {
+                    wakeupSelector();
+                }
+            }
+        }
+    }
+
+    private ServerSocketChannel open(SocketAddress socketAddress) throws Exception {
+        ServerSocketChannel channel = null;
+
+        if (selectorProvider != null) {
+            channel = selectorProvider.openServerSocketChannel();
+        }
+        else {
+            channel = ServerSocketChannel.open();
+        }
+
+        boolean success = false;
+
+        try {
+            channel.configureBlocking(false);
+
+            ServerSocket socket = channel.socket();
+            socket.setReuseAddress(isReuseAddress());
+            try {
+                socket.bind(socketAddress, getBacklog());
+            }
+            catch (IOException e) {
+                channel.close();
+
+                throw e;
+            }
+
+            channel.register(selector, SelectionKey.OP_ACCEPT);
+            success = true;
+        }
+        finally {
+            if (!success) {
+                SelectionKey key = channel.keyFor(selector);
+                if (key != null) {
+                    key.cancel();
+                }
+
+                channel.close();
+            }
+        }
+
+        return channel;
+    }
+
+    private void accept(Iterator<SelectionKey> iterator) throws Exception {
+        while (iterator.hasNext()) {
+            SelectionKey key = iterator.next();
+
+            if (key.isValid() && key.isAcceptable()) {
+                ServerSocketChannel channel = (ServerSocketChannel) key.channel();
+                SocketChannel acceptChannel = channel.accept();
+
+                NioSocketSession session = createSession(processor, acceptChannel);
+                if (session == null) {
+                    continue;
+                }
+                System.out.println("Accepted one remote connection.");
+            }
+
+            iterator.remove();
+        }
+    }
+
+    private NioSocketSession createSession(Processor<NioSocketSession> processor, SocketChannel acceptChannel) throws Exception {
+        if (acceptChannel == null) {
+            return null;
+        }
+
+        return new NioSocketSession();
     }
 }

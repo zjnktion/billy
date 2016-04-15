@@ -3,9 +3,7 @@ package cn.zjnktion.billy.future;
 import cn.zjnktion.billy.listener.FutureListener;
 
 import java.net.SocketAddress;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created by zhengjn on 2016/4/14.
@@ -16,9 +14,20 @@ public class DefaultBindFuture extends DefaultFuture implements BindFuture {
 
     private final List<SocketAddress> bindAddresses;
 
+    private Set<SocketAddress> boundAddresses;
+
     public DefaultBindFuture(List<? extends SocketAddress> bindAddresses) {
         super(null);
         this.bindAddresses = new ArrayList<SocketAddress>(bindAddresses);
+    }
+
+    public final boolean isSuccess() {
+        return isCompleted() && getResult() == BOUND && getCause() == null;
+    }
+
+    public final void setBound(Set<? extends SocketAddress> socketAddresses) {
+        this.boundAddresses = new HashSet<SocketAddress>(socketAddresses);
+        setResult(BOUND);
     }
 
     public final Throwable getCause() {
@@ -39,16 +48,16 @@ public class DefaultBindFuture extends DefaultFuture implements BindFuture {
         setResult(cause);
     }
 
-    public final boolean isSuccess() {
-        return isCompleted() && getResult() == BOUND && getCause() == null;
-    }
-
-    public final void setBound() {
-        setResult(BOUND);
-    }
-
     public final List<SocketAddress> getBindAddresses() {
         return Collections.unmodifiableList(bindAddresses);
+    }
+
+    public final Set<SocketAddress> getBoundAddresses() {
+        if (!isCompleted()) {
+            return null;
+        }
+
+        return Collections.unmodifiableSet(boundAddresses);
     }
 
     public final BindFuture await() throws InterruptedException {
