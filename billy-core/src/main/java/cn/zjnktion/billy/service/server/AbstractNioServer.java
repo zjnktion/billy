@@ -116,6 +116,7 @@ public abstract class AbstractNioServer<S extends AbstractNioSession> extends Ab
         catch (Exception e) {
             ExceptionSupervisor.getInstance().exceptionCaught(e);
         }
+        System.out.println("All disposed");
     }
 
     protected final void wakeupSelector() {

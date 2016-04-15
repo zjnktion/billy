@@ -107,10 +107,6 @@ public abstract class AbstractServer extends AbstractService implements Server {
     }
 
     public final UnbindFuture unbind(Iterable<? extends SocketAddress> socketAddresses) throws IOException {
-        if (isDisposing()) {
-            throw new IllegalStateException("Service had been disposed.");
-        }
-
         if (socketAddresses == null) {
             throw new IllegalArgumentException("Can not unbind null socket addresses.");
         }

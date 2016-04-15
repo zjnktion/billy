@@ -61,6 +61,9 @@ public class NioSocketServerTester {
             if (future1.isCompleted()) {
                 System.out.println("bind success.");
             }
+
+            TimeUnit.MILLISECONDS.sleep(10000L);
+            server.dispose();
         }
         catch (Exception e) {
             System.out.println("...");
