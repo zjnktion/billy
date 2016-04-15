@@ -167,20 +167,6 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
                     }
                 }
             }
-
-            // if disposing ,release all resources.
-            if (isDisposing()) {
-                processor.dispose();
-
-                try {
-                    if (selector != null) {
-                        selector.close();
-                    }
-                }
-                catch (Exception e) {
-                    ExceptionSupervisor.getInstance().exceptionCaught(e);
-                }
-            }
         }
     }
 

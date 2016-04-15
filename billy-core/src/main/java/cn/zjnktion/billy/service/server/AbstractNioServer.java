@@ -107,6 +107,15 @@ public abstract class AbstractNioServer<S extends AbstractNioSession> extends Ab
         unbind(boundAddresses);
         poll();
         wakeupSelector();
+        processor.dispose();
+        try {
+            if (selector != null) {
+                selector.close();
+            }
+        }
+        catch (Exception e) {
+            ExceptionSupervisor.getInstance().exceptionCaught(e);
+        }
     }
 
     protected final void wakeupSelector() {
