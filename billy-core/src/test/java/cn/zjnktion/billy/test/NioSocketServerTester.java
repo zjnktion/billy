@@ -7,6 +7,7 @@ import cn.zjnktion.billy.service.server.NioSocketServer;
 import cn.zjnktion.billy.session.Session;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by zhengjn on 2016/4/15.
@@ -49,6 +50,15 @@ public class NioSocketServerTester {
             future.awaitUninterruptibly();
 
             if (future.isCompleted()) {
+                System.out.println("bind success.");
+            }
+
+            TimeUnit.MILLISECONDS.sleep(5000L);
+
+            BindFuture future1 = server.bind(new InetSocketAddress(9090));
+            future1.awaitUninterruptibly();
+
+            if (future1.isCompleted()) {
                 System.out.println("bind success.");
             }
         }

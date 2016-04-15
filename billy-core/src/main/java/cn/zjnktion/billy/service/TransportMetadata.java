@@ -1,4 +1,4 @@
-package cn.zjnktion.billy.common;
+package cn.zjnktion.billy.service;
 
 /**
  * Created by zhengjn on 2016/4/8.

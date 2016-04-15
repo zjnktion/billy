@@ -1,7 +1,8 @@
 package cn.zjnktion.billy.service.server;
 
 import cn.zjnktion.billy.common.ExceptionSupervisor;
-import cn.zjnktion.billy.common.TransportMetadata;
+import cn.zjnktion.billy.service.DefaultTransportMetadata;
+import cn.zjnktion.billy.service.TransportMetadata;
 import cn.zjnktion.billy.future.BindFuture;
 import cn.zjnktion.billy.future.UnbindFuture;
 import cn.zjnktion.billy.processor.NioSocketProcessor;
@@ -27,6 +28,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * Created by zhengjn on 2016/4/5.
  */
 public final class NioSocketServer extends AbstractNioServer<NioSocketSession> implements SocketServer {
+
+    public static final TransportMetadata METADATA = new DefaultTransportMetadata("nio", "socket", false, true);
 
     private boolean keepAlive = false;
 
@@ -127,23 +130,7 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
     }
 
     public TransportMetadata getTransportMetadata() {
-        return new TransportMetadata() {
-            public String getProvider() {
-                return null;
-            }
-
-            public String getType() {
-                return null;
-            }
-
-            public boolean isConnectionless() {
-                return false;
-            }
-
-            public boolean canFragment() {
-                return false;
-            }
-        };
+        return METADATA;
     }
 
     private class Polling implements Runnable {
@@ -151,36 +138,18 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
         public void run() {
             assert (pollingRef.get() == this);
 
-            int boundChannelCount = 0;
-
             pollLock.release();
 
             while (selectable) {
                 try {
+                    bindChannels();
+
                     int selected = selector.select();
-
-                    boundChannelCount += bindChannels();
-                    if (boundChannelCount == 0) {
-                        pollingRef.set(null);
-
-                        if (bindQueue.isEmpty() && unbindQueue.isEmpty()) {
-                            assert (pollingRef.get() != this);
-                            break;
-                        }
-
-                        if (!pollingRef.compareAndSet(null, this)) {
-                            assert (pollingRef.get() != this);
-                            break;
-                        }
-
-                        assert (pollingRef.get() == this);
-                    }
-
                     if (selected > 0) {
                         accept(selector.selectedKeys().iterator());
                     }
 
-                    boundChannelCount -= unbindChannels();
+                    unbindChannels();
                 }
                 catch (ClosedSelectorException e) {
                     ExceptionSupervisor.getInstance().exceptionCaught(e);
@@ -200,9 +169,7 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
             }
 
             // if disposing ,release all resources.
-            if (selectable && isDisposing()) {
-                selectable = false;
-
+            if (isDisposing()) {
                 processor.dispose();
 
                 try {
@@ -221,12 +188,12 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
         return selector.select();
     }
 
-    private int bindChannels() {
+    private void bindChannels() {
         for(;;) {
             BindFuture future = bindQueue.poll();
 
             if (future == null) {
-                return 0;
+                return;
             }
 
             Set<SocketAddress> newAddresses = new HashSet<SocketAddress>();
@@ -244,8 +211,6 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
                 boundChannels.putAll(newChannels);
 
                 future.setBound(newAddresses);
-
-                return newChannels.size();
             }
             catch (Exception e) {
                 future.setCause(e);
@@ -265,58 +230,47 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
                             ExceptionSupervisor.getInstance().exceptionCaught(e);
                         }
                     }
-
-                    wakeupSelector();
                 }
             }
         }
     }
 
-    private int unbindChannels() {
+    private void unbindChannels() {
         for (;;) {
             UnbindFuture future = unbindQueue.poll();
             if (future == null) {
-                return 0;
+                return;
             }
 
             Set<SocketAddress> removeAddresses = new HashSet<SocketAddress>();
             Map<SocketAddress, ServerSocketChannel> removeChannels = new ConcurrentHashMap<SocketAddress, ServerSocketChannel>();
             List<SocketAddress> unbindAddresses = future.getUnbindAddresses();
 
-            try {
-                for (SocketAddress socketAddress : unbindAddresses) {
-                    ServerSocketChannel channel = boundChannels.remove(socketAddress);
+            for (SocketAddress socketAddress : unbindAddresses) {
+                ServerSocketChannel channel = boundChannels.remove(socketAddress);
 
-                    if (channel == null) {
-                        continue;
-                    }
-
-                    removeAddresses.add(socketAddress);
-                    removeChannels.put(channel.socket().getLocalSocketAddress(), channel);
-
-                    try {
-                        SelectionKey key = channel.keyFor(selector);
-                        if (key != null) {
-                            key.cancel();
-                        }
-
-                        channel.close();
-                    } catch (IOException e) {
-                        ExceptionSupervisor.getInstance().exceptionCaught(e);
-                    }
+                if (channel == null) {
+                    continue;
                 }
 
-                boundAddresses.removeAll(removeAddresses);
+                removeAddresses.add(socketAddress);
+                removeChannels.put(channel.socket().getLocalSocketAddress(), channel);
 
-                future.setUnbound(removeAddresses);
+                try {
+                    SelectionKey key = channel.keyFor(selector);
+                    if (key != null) {
+                        key.cancel();
+                    }
 
-                return removeChannels.size();
-            }
-            finally {
-                if (removeChannels.size() != 0) {
-                    wakeupSelector();
+                    channel.close();
+                } catch (IOException e) {
+                    ExceptionSupervisor.getInstance().exceptionCaught(e);
                 }
             }
+
+            boundAddresses.removeAll(removeAddresses);
+
+            future.setUnbound(removeAddresses);
         }
     }
 

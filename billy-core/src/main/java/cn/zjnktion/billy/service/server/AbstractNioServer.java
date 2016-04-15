@@ -103,6 +103,7 @@ public abstract class AbstractNioServer<S extends AbstractNioSession> extends Ab
     }
 
     protected final void dispose0() throws Exception {
+        selectable = false;
         unbind(boundAddresses);
         poll();
         wakeupSelector();

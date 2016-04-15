@@ -1,7 +1,7 @@
 package cn.zjnktion.billy.session;
 
 import cn.zjnktion.billy.common.IdleType;
-import cn.zjnktion.billy.common.TransportMetadata;
+import cn.zjnktion.billy.service.TransportMetadata;
 import cn.zjnktion.billy.future.CloseFuture;
 import cn.zjnktion.billy.future.ReadFuture;
 import cn.zjnktion.billy.future.WriteFuture;
