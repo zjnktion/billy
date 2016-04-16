@@ -69,6 +69,14 @@ public class SampleNioClient {
         else if (key.isWritable()) {
             SocketChannel channel = (SocketChannel) key.channel();
             System.out.println(channel.getRemoteAddress() + " writable...");
+            try {
+                Thread.sleep(10000L);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println(channel.getRemoteAddress());
+            channel.write(ByteBuffer.wrap("shello".getBytes()));
+            channel.close();
         }
     }
 

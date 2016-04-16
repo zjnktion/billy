@@ -142,12 +142,13 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
 
             while (selectable) {
                 try {
-                    bindChannels();
 
                     int selected = selector.select();
                     if (selected > 0) {
                         accept(selector.selectedKeys().iterator());
                     }
+
+                    bindChannels();
 
                     unbindChannels();
                 }
@@ -193,8 +194,17 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
                     newChannels.put(channel.socket().getLocalSocketAddress(), channel);
                 }
 
+                boolean activated = false;
+                if (boundAddresses.isEmpty()) {
+                    activated =true;
+                }
+
                 boundAddresses.addAll(newAddresses);
                 boundChannels.putAll(newChannels);
+
+                if (activated) {
+                    fireServiceActivated();
+                }
 
                 future.setBound(newAddresses);
             }
@@ -255,6 +265,10 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
             }
 
             boundAddresses.removeAll(removeAddresses);
+
+            if (boundAddresses.isEmpty()) {
+                fireServiceDeactivated();
+            }
 
             future.setUnbound(removeAddresses);
         }

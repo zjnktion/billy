@@ -2,6 +2,7 @@ package cn.zjnktion.billy.test;
 
 import cn.zjnktion.billy.common.IdleType;
 import cn.zjnktion.billy.future.BindFuture;
+import cn.zjnktion.billy.future.UnbindFuture;
 import cn.zjnktion.billy.handler.Handler;
 import cn.zjnktion.billy.service.server.NioSocketServer;
 import cn.zjnktion.billy.session.Session;
@@ -62,8 +63,17 @@ public class NioSocketServerTester {
                 System.out.println("bind success.");
             }
 
-            TimeUnit.MILLISECONDS.sleep(10000L);
+            TimeUnit.MILLISECONDS.sleep(2000L);
+            UnbindFuture future2 = server.unbind(future.getBoundAddresses());
+            future2.awaitUninterruptibly();
+            if (future2.isSuccess()) {
+                System.out.println(future2.getUnboundAddresses());
+            }
+
+            //TimeUnit.MILLISECONDS.sleep(10000L);
             server.dispose();
+
+            //TimeUnit.MILLISECONDS.sleep(10000L);
         }
         catch (Exception e) {
             System.out.println("...");

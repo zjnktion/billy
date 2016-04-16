@@ -74,28 +74,38 @@ public abstract class AbstractNioServer<S extends AbstractNioSession> extends Ab
         }
     }
 
-    protected final BindFuture bind0(List<? extends SocketAddress> bindAddresses) throws Exception {
+    protected final BindFuture bind0(List<? extends SocketAddress> bindAddresses) {
         DefaultBindFuture future = new DefaultBindFuture(bindAddresses);
         bindQueue.add(future);
 
-        poll();
+        try {
+            poll();
 
-        // wait a second so that the polling can start to select.
-        TimeUnit.MILLISECONDS.sleep(10);
+            // wait a second so that the polling can start to select.
+            TimeUnit.MILLISECONDS.sleep(10);
+        }
+        catch (InterruptedException e) {
+            // do nothing
+        }
 
         wakeupSelector();
 
         return future;
     }
 
-    protected final UnbindFuture unbind0(List<? extends SocketAddress> unbindAddresses) throws Exception {
+    protected final UnbindFuture unbind0(List<? extends SocketAddress> unbindAddresses) {
         DefaultUnbindFuture future = new DefaultUnbindFuture(unbindAddresses);
         unbindQueue.add(future);
 
-        poll();
+        try {
+            poll();
 
-        // wait a second so that the polling can start to select.
-        TimeUnit.MILLISECONDS.sleep(10);
+            // wait a second so that the polling can start to select.
+            TimeUnit.MILLISECONDS.sleep(10);
+        }
+        catch (InterruptedException e) {
+            // do nothing
+        }
 
         wakeupSelector();
 

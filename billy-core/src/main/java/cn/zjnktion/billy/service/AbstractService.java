@@ -35,6 +35,7 @@ public abstract class AbstractService implements Service {
     private final ServiceListener serviceActivationListener = new ServiceListener() {
         public void serviceActivated(Service service) throws Exception {
             // We should update the service I/O time?
+            System.out.println("service activated.");
         }
 
         public void serviceIdle(Service service, IdleType idleType) throws Exception {
@@ -43,6 +44,7 @@ public abstract class AbstractService implements Service {
 
         public void serviceDeactivated(Service service) throws Exception {
             // empty
+            System.out.println("service deactivated.");
         }
 
         public void sessionCreated(Session session) throws Exception {
