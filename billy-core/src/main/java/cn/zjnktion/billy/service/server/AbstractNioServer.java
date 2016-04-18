@@ -78,16 +78,6 @@ public abstract class AbstractNioServer<S extends AbstractNioSession> extends Ab
         DefaultBindFuture future = new DefaultBindFuture(bindAddresses);
         bindQueue.add(future);
 
-        try {
-            poll();
-
-            // wait a second so that the polling can start to select.
-            TimeUnit.MILLISECONDS.sleep(10);
-        }
-        catch (InterruptedException e) {
-            // do nothing
-        }
-
         wakeupSelector();
 
         return future;
@@ -97,16 +87,6 @@ public abstract class AbstractNioServer<S extends AbstractNioSession> extends Ab
         DefaultUnbindFuture future = new DefaultUnbindFuture(unbindAddresses);
         unbindQueue.add(future);
 
-        try {
-            poll();
-
-            // wait a second so that the polling can start to select.
-            TimeUnit.MILLISECONDS.sleep(10);
-        }
-        catch (InterruptedException e) {
-            // do nothing
-        }
-
         wakeupSelector();
 
         return future;
@@ -115,7 +95,6 @@ public abstract class AbstractNioServer<S extends AbstractNioSession> extends Ab
     protected final void dispose0() throws Exception {
         selectable = false;
         unbind(boundAddresses);
-        poll();
         wakeupSelector();
         processor.dispose();
         try {

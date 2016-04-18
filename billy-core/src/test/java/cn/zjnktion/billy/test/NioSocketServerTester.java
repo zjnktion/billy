@@ -8,6 +8,9 @@ import cn.zjnktion.billy.service.server.NioSocketServer;
 import cn.zjnktion.billy.session.Session;
 
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -47,35 +50,43 @@ public class NioSocketServerTester {
             }
         });
         try {
-            BindFuture future = server.bind(new InetSocketAddress(5222));
-            future.awaitUninterruptibly();
+            int num = 1000;
 
-            if (future.isCompleted()) {
-                System.out.println("bind success.");
+            BindFuture[] future = new BindFuture[num];
+
+            for (int i = 0; i < num; i++) {
+                future[i] = server.bind(new InetSocketAddress(5222 + i));
             }
 
-            TimeUnit.MILLISECONDS.sleep(5000L);
-
-            BindFuture future1 = server.bind(new InetSocketAddress(9090));
-            future1.awaitUninterruptibly();
-
-            if (future1.isCompleted()) {
-                System.out.println("bind success.");
+            for (int i = 0; i < num; i++) {
+                future[i].awaitUninterruptibly();
             }
 
-            TimeUnit.MILLISECONDS.sleep(2000L);
-            UnbindFuture future2 = server.unbind(future.getBoundAddresses());
-            future2.awaitUninterruptibly();
-            if (future2.isSuccess()) {
-                System.out.println(future2.getUnboundAddresses());
+            for (int i = 0; i < num; i++) {
+                if (future[i].isSuccess()) {
+                    System.out.println(future[i].getBoundAddresses() + " bind success.");
+                }
             }
 
-            //TimeUnit.MILLISECONDS.sleep(10000L);
+            /*List<SocketAddress> list = new ArrayList<SocketAddress>();
+            for (int i = 0; i < num; i++) {
+                list.add(new InetSocketAddress(8080 + i));
+            }
+            BindFuture future = server.bind(list).awaitUninterruptibly();
+            if (future.isSuccess()) {
+                System.out.println(future.getBoundAddresses() + " bind success.");
+            }
+            else {
+                System.out.println(future.getCause());
+            }*/
+
+            TimeUnit.MILLISECONDS.sleep(10000L);
             server.dispose();
 
             //TimeUnit.MILLISECONDS.sleep(10000L);
         }
         catch (Exception e) {
+            e.printStackTrace();
             System.out.println("...");
         }
     }

@@ -1,6 +1,7 @@
 package cn.zjnktion.billy.service.server;
 
 import cn.zjnktion.billy.common.ExceptionSupervisor;
+import cn.zjnktion.billy.common.RuntimeIOException;
 import cn.zjnktion.billy.service.DefaultTransportMetadata;
 import cn.zjnktion.billy.service.TransportMetadata;
 import cn.zjnktion.billy.future.BindFuture;
@@ -62,6 +63,14 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
 
     public NioSocketServer(Executor executor, Processor<NioSocketSession> processor) {
         super(new NioSocketSessionConfig(), executor, processor);
+
+        // start polling
+        try {
+            poll();
+        }
+        catch (Exception e) {
+            throw new RuntimeIOException("Failed to start polling.", e);
+        }
     }
 
     @Override
@@ -187,6 +196,7 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
             Map<SocketAddress, ServerSocketChannel> newChannels = new ConcurrentHashMap<SocketAddress, ServerSocketChannel>();
             List<SocketAddress> bindAddresses = future.getBindAddresses();
 
+            boolean activated = false;
             try {
                 for (SocketAddress socketAddress : bindAddresses) {
                     ServerSocketChannel channel = open(socketAddress);
@@ -194,17 +204,12 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
                     newChannels.put(channel.socket().getLocalSocketAddress(), channel);
                 }
 
-                boolean activated = false;
                 if (boundAddresses.isEmpty()) {
-                    activated =true;
+                    activated = true;
                 }
 
                 boundAddresses.addAll(newAddresses);
                 boundChannels.putAll(newChannels);
-
-                if (activated) {
-                    fireServiceActivated();
-                }
 
                 future.setBound(newAddresses);
             }
@@ -227,6 +232,11 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
                         }
                     }
                 }
+                else {
+                    if (activated) {
+                        fireServiceActivated();
+                    }
+                }
             }
         }
     }
@@ -242,35 +252,43 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
             Map<SocketAddress, ServerSocketChannel> removeChannels = new ConcurrentHashMap<SocketAddress, ServerSocketChannel>();
             List<SocketAddress> unbindAddresses = future.getUnbindAddresses();
 
-            for (SocketAddress socketAddress : unbindAddresses) {
-                ServerSocketChannel channel = boundChannels.remove(socketAddress);
+            boolean deactivated = false;
+            try {
+                for (SocketAddress socketAddress : unbindAddresses) {
+                    ServerSocketChannel channel = boundChannels.remove(socketAddress);
 
-                if (channel == null) {
-                    continue;
-                }
-
-                removeAddresses.add(socketAddress);
-                removeChannels.put(channel.socket().getLocalSocketAddress(), channel);
-
-                try {
-                    SelectionKey key = channel.keyFor(selector);
-                    if (key != null) {
-                        key.cancel();
+                    if (channel == null) {
+                        continue;
                     }
 
-                    channel.close();
-                } catch (IOException e) {
-                    ExceptionSupervisor.getInstance().exceptionCaught(e);
+                    removeAddresses.add(socketAddress);
+                    removeChannels.put(channel.socket().getLocalSocketAddress(), channel);
+
+                    try {
+                        SelectionKey key = channel.keyFor(selector);
+                        if (key != null) {
+                            key.cancel();
+                        }
+
+                        channel.close();
+                    } catch (IOException e) {
+                        ExceptionSupervisor.getInstance().exceptionCaught(e);
+                    }
+                }
+
+                boundAddresses.removeAll(removeAddresses);
+
+                if (boundAddresses.isEmpty()) {
+                    deactivated = true;
+                }
+
+                future.setUnbound(removeAddresses);
+            }
+            finally {
+                if (deactivated) {
+                    fireServiceDeactivated();
                 }
             }
-
-            boundAddresses.removeAll(removeAddresses);
-
-            if (boundAddresses.isEmpty()) {
-                fireServiceDeactivated();
-            }
-
-            future.setUnbound(removeAddresses);
         }
     }
 
