@@ -18,7 +18,7 @@ public interface Handler {
 
     void messageRead(Session session, Object message) throws Exception;
 
-    void messageSent(Session session, Object message) throws Exception;
+    void messageWrote(Session session, Object message) throws Exception;
 
     void exceptionCaught(Session session, Throwable cause) throws Exception;
 }
