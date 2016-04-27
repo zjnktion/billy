@@ -41,7 +41,7 @@ public class NioSocketServerTester {
 
             }
 
-            public void messageSent(Session session, Object message) throws Exception {
+            public void messageWrote(Session session, Object message) throws Exception {
 
             }
 
