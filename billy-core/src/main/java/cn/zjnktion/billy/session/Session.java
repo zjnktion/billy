@@ -23,11 +23,12 @@ public interface Session {
     TransportMetadata getTransportMetadata();
 
     SessionConfig getConfig();
+
     /**
      * 异步读
      * 对于服务器而言，其实是不建议使用异步读的，如果有大量的客户端发起业务请求，读队列将会导致意想不到的内存溢出问题
      * 对于客户端而已，可以开启异步读
-     * 所以该操作需要在{@link SessionConfig}中配置生效才能使用，否则将会跑出{@link IllegalStateException}
+     * 所以该操作需要在{@link SessionConfig}中配置生效才能使用，否则将会抛出{@link IllegalStateException}
      * 服务器默认读操作会在所有filter执行后同步执行，如果该项没有配置开启的话
      * @return
      */
@@ -94,4 +95,4 @@ public interface Session {
     void removeAttr(String key);
 
     boolean containsAttr(String key);
-    }
+}

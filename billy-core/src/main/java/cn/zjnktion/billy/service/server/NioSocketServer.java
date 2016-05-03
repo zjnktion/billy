@@ -359,6 +359,6 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
             return null;
         }
 
-        return new NioSocketSession();
+        return new NioSocketSession(null);
     }
 }

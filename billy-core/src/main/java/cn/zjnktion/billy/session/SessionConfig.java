@@ -23,7 +23,7 @@ public interface SessionConfig {
 
     long getIdleTime(IdleType idleType, TimeUnit timeUnit);
 
-    void setIdleTime(IdleType idleType, TimeUnit timeUnit);
+    void setIdleTime(IdleType idleType, TimeUnit timeUnit, long idleTime);
 
     void setConfig(SessionConfig config);
 
@@ -32,4 +32,6 @@ public interface SessionConfig {
      * @return
      */
     boolean isAsyncReadEnable();
+
+    void setAsyncReadEnable(boolean asyncReadEnable);
 }

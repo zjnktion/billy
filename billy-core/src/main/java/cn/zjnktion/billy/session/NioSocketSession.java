@@ -15,12 +15,8 @@ import java.net.SocketAddress;
  * Created by zhengjn on 2016/4/13.
  */
 public final class NioSocketSession extends AbstractNioSession implements SocketSession {
-    public long getId() {
-        return 0;
-    }
-
-    public Service getService() {
-        return null;
+    public NioSocketSession(Service service) {
+        super(service);
     }
 
     public TransportMetadata getTransportMetadata() {
