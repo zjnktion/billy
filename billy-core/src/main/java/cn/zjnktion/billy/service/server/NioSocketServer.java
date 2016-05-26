@@ -62,7 +62,7 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
     }
 
     public NioSocketServer(Executor executor, Processor<NioSocketSession> processor) {
-        super(new NioSocketSessionConfig(), executor, processor);
+        super(null, executor, processor);
 
         // start polling
         try {
@@ -359,6 +359,6 @@ public final class NioSocketServer extends AbstractNioServer<NioSocketSession> i
             return null;
         }
 
-        return new NioSocketSession(null);
+        return new NioSocketSession(this);
     }
 }

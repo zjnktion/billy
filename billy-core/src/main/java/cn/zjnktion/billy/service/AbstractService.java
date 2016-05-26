@@ -75,9 +75,9 @@ public abstract class AbstractService implements Service {
     private volatile boolean disposed;
 
     protected AbstractService(SessionConfig sessionConfig, Executor executor) {
-        if (sessionConfig == null) {
+        /*if (sessionConfig == null) {
             throw new IllegalArgumentException("Can not set a null session config.");
-        }
+        }*/
 
         if (getTransportMetadata() == null) {
             throw new IllegalArgumentException("There's no TransportMetadata to be assigned.");

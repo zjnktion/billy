@@ -81,7 +81,7 @@ public class NioSocketServerTester {
             }*/
 
             TimeUnit.MILLISECONDS.sleep(10000L);
-            server.dispose();
+            //server.dispose();
 
             //TimeUnit.MILLISECONDS.sleep(10000L);
         }

@@ -5,9 +5,18 @@ package cn.zjnktion.billy.session;
  */
 public interface SocketSessionConfig extends SessionConfig {
 
+    boolean DEFAULT_SOCKET_KEEPALIVE = false;
+    boolean DEFAULT_SOCKET_REUSEADDRESS = false;
+    boolean DEFAULT_SOCKET_TCPNODELAY = false;
+    int DEFAULT_SOCKET_RECETVEBUFFERSIZE = 1024;
+    int DEFAULT_SOCKET_SENDBUFFERSIZE = 1024;
+    int DEFAULT_SOCKET_TRAFFICCLASS = 64;
+    boolean DEFAULT_SOCKET_OOBINLINE = false;
+    int DEFAULT_SOCKET_SOLINER = 1;
+
     boolean isKeepAlive();
 
-    void setKeepAlive();
+    void setKeepAlive(boolean keepAlive);
 
     boolean isReuseAddress();
 
@@ -35,5 +44,5 @@ public interface SocketSessionConfig extends SessionConfig {
 
     int getSoLinger();
 
-    void setSoLinger();
+    void setSoLinger(int soLinger);
 }

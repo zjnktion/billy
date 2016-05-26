@@ -9,7 +9,7 @@ public class ClientMain {
 
     public static void main(String[] args) throws IOException {
         SampleNioClient client = SampleNioClient.open();
-        client.connect(8080);
+        client.connect(6053);
     }
 
 }
